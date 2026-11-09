@@ -113,7 +113,9 @@ function App() {
             <label className="condition-toggle"><input type="checkbox" checked={conditionEnabled}
               onChange={(event) => setConditionEnabled(event.target.checked)} /> Ограничения по точки и бои</label>
             {conditionEnabled && <div className="condition-fields">
-              {players.map((player, index) => (
+              {[3, 1, 0, 2].map((index) => {
+                const player = players[index];
+                return (
                 <fieldset className="player-condition" key={player.id}>
                   <legend>{player.name}</legend>
                   <label className="deal-count">Минимум HCP
@@ -140,7 +142,8 @@ function App() {
                     ))}
                   </div>
                 </fieldset>
-              ))}
+                );
+              })}
               <small>Границите са включени. Всички условия важат едновременно при следващо генериране. Общо в раздаването има 40 HCP.</small>
             </div>}
           </fieldset>

@@ -179,3 +179,19 @@ h2 { margin: 0; font-size: 1.35rem; }
   .bridge-table { grid-template-columns: minmax(0, 1fr); }
   .player-hand.north, .player-hand.south { width: 100%; }
 }
+
+.hand-condition { flex-basis: 100%; min-width: 0; margin: 8px 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.hand-condition legend { font-weight: 650; }
+.condition-toggle { display: flex; align-items: center; gap: 6px; }
+.condition-fields { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.condition-fields small { flex-basis: 100%; color: var(--muted); }
+.deal-count select { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; color: inherit; background: white; }
+
+.player-condition { display: flex; flex-wrap: wrap; gap: 12px; min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; flex: 1 1 300px; }
+.player-condition .deal-count { flex: 1; }
+.player-condition input { width: 100%; min-width: 80px; }
+
+.suit-conditions { flex-basis: 100%; display: grid; gap: 10px; }
+.suit-condition { display: grid; grid-template-columns: minmax(80px, 1fr) repeat(2, minmax(0, 1fr)); gap: 10px; align-items: center; }
+.suit-condition input { min-width: 0; }
+.generate:disabled { opacity: .65; cursor: wait; }

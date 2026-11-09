@@ -1,6 +1,6 @@
 ﻿import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { generateDeal, summarizeHand } from './bridge.js';
+import { generateDeal, summarizeHand, suits } from './bridge.js';
 import { downloadDealWord } from './export-word.js';
 import './style.css';
 
@@ -45,6 +45,18 @@ function PlayerHand({ player, hand, dealIndex }) {
 function App() {
   const [deals, setDeals] = useState(() => [generateDeal()]);
   const [dealCount, setDealCount] = useState('1');
+  const [conditionEnabled, setConditionEnabled] = useState(false);
+  const [pointRanges, setPointRanges] = useState(() => players.map(() => ({ minPoints: '0', maxPoints: '37', suits: Object.fromEntries(suits.map((s) => [s.id, { min: '0', max: '13' }])) })));
+  function updateRange(index, field, value) {
+    setPointRanges((ranges) => ranges.map((range, i) => i === index ? { ...range, [field]: value } : range));
+  }
+  function updateSuit(index, suit, field, value) {
+    setPointRanges((ranges) => ranges.map((range, i) => i === index ? {
+      ...range, suits: { ...range.suits, [suit]: { ...range.suits[suit], [field]: value } },
+    } : range));
+  }
+  const [generating, setGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
   async function exportWord() {
@@ -64,22 +76,80 @@ function App() {
         <span className="eyebrow"><span aria-hidden="true">♠</span> БРИДЖ</span>
         <h1>Бридж раздавания</h1>
         <p>Четирима играчи · 13 карти на всеки.</p>
-        <form className="deal-actions" onSubmit={(event) => {
+        <form className="deal-actions" onSubmit={async (event) => {
           event.preventDefault();
           const count = Number(dealCount);
           if (Number.isInteger(count) && count >= 1 && count <= 100) {
-            setDeals(Array.from({ length: count }, () => generateDeal()));
+            setGenerationError('');
+            setGenerating(true);
+            try {
+              const condition = conditionEnabled ? pointRanges.map((range) => ({
+                minPoints: Number(range.minPoints), maxPoints: Number(range.maxPoints),
+                suits: Object.fromEntries(suits.map((s) => [s.id, { min: Number(range.suits[s.id].min), max: Number(range.suits[s.id].max) }])),
+              })) : null;
+              const worker = new Worker(new URL('./generation-worker.js', import.meta.url), { type: 'module' });
+              const generated = await new Promise((resolve, reject) => {
+                worker.onmessage = ({ data }) => {
+                  worker.terminate();
+                  data.error ? reject(new Error(data.error)) : resolve(data.deals);
+                };
+                worker.onerror = () => { worker.terminate(); reject(new Error('Генерирането не успя. Опитай отново.')); };
+                worker.postMessage({ count, condition });
+              });
+              setDeals(generated);
+            } catch (error) {
+              setGenerationError(error.message);
+            } finally {
+              setGenerating(false);
+            }
           }
         }}>
           <label className="deal-count">Брой раздавания
             <input type="number" min="1" max="100" step="1" required value={dealCount}
               onChange={(event) => setDealCount(event.target.value)} />
           </label>
-          <button type="submit" className="generate">Генерирай</button>
+          <fieldset className="hand-condition">
+            <legend>Условия за всички ръце</legend>
+            <label className="condition-toggle"><input type="checkbox" checked={conditionEnabled}
+              onChange={(event) => setConditionEnabled(event.target.checked)} /> Ограничения по точки и бои</label>
+            {conditionEnabled && <div className="condition-fields">
+              {players.map((player, index) => (
+                <fieldset className="player-condition" key={player.id}>
+                  <legend>{player.name}</legend>
+                  <label className="deal-count">Минимум HCP
+                    <input type="number" min="0" max="37" step="1" required value={pointRanges[index].minPoints}
+                      onChange={(event) => updateRange(index, 'minPoints', event.target.value)} />
+                  </label>
+                  <label className="deal-count">Максимум HCP
+                    <input type="number" min="0" max="37" step="1" required value={pointRanges[index].maxPoints}
+                      onChange={(event) => updateRange(index, 'maxPoints', event.target.value)} />
+                  </label>
+                  <div className="suit-conditions">
+                    {suits.map((suit) => (
+                      <div className="suit-condition" key={suit.id}>
+                        <span><SuitSymbol suit={suit} /> {suit.name}</span>
+                        <label className="deal-count">От
+                          <input aria-label={player.name + ' · ' + suit.name + ' минимум'} type="number" min="0" max="13" step="1" required
+                            value={pointRanges[index].suits[suit.id].min} onChange={(e) => updateSuit(index, suit.id, 'min', e.target.value)} />
+                        </label>
+                        <label className="deal-count">До
+                          <input aria-label={player.name + ' · ' + suit.name + ' максимум'} type="number" min="0" max="13" step="1" required
+                            value={pointRanges[index].suits[suit.id].max} onChange={(e) => updateSuit(index, suit.id, 'max', e.target.value)} />
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </fieldset>
+              ))}
+              <small>Границите са включени. Всички условия важат едновременно при следващо генериране. Общо в раздаването има 40 HCP.</small>
+            </div>}
+          </fieldset>
+          <button type="submit" className="generate" disabled={generating}>{generating ? 'Генериране…' : 'Генерирай'}</button>
           <button type="button" className="clear" disabled={exporting} onClick={exportWord}>
             {exporting ? 'Експортиране…' : 'Експорт в Word'}
           </button>
         </form>
+        {generationError && <p role="alert">{generationError}</p>}
         {exportError && <p role="alert">{exportError}</p>}
       </header>
       <p className="deals-status" role="status">Показани раздавания: {deals.length}</p>

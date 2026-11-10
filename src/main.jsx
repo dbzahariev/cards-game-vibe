@@ -1,5 +1,6 @@
 ﻿import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { useEffect } from 'react';
 import { generateDeal, summarizeHand, suits } from './bridge.js';
 import { downloadDealWord } from './export-word.js';
 import './style.css';
@@ -65,6 +66,41 @@ function App() {
   const [generationError, setGenerationError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+  const countRequest = JSON.stringify({
+    condition: conditionEnabled ? pointRanges.map((range) => ({
+      minPoints: range.minPoints === '' ? null : Number(range.minPoints),
+      maxPoints: range.maxPoints === '' ? null : Number(range.maxPoints),
+      suits: Object.fromEntries(suits.map((s) => [s.id, {
+        min: range.suits[s.id].min === '' ? null : Number(range.suits[s.id].min),
+        max: range.suits[s.id].max === '' ? null : Number(range.suits[s.id].max),
+      }])),
+    })) : null,
+    fixedHands: fixedEnabled ? fixedHands : undefined,
+  });
+  const [combinationCount, setCombinationCount] = useState(null);
+  useEffect(() => {
+    let worker;
+    let active = true;
+    const timer = setTimeout(() => {
+      try {
+        worker = new Worker(new URL('./count-worker.js', import.meta.url), { type: 'module' });
+        worker.onmessage = ({ data }) => {
+          if (active) setCombinationCount({ key: countRequest, ...data });
+          worker.terminate();
+        };
+        worker.onerror = () => {
+          if (active) setCombinationCount({ key: countRequest, error: 'Броенето не успя. Промени условията, за да опиташ отново.' });
+          worker.terminate();
+        };
+        worker.postMessage(JSON.parse(countRequest));
+      } catch {
+        if (active) setCombinationCount({ key: countRequest, error: 'Броенето не успя.' });
+      }
+    }, 400);
+    return () => { active = false; clearTimeout(timer); worker?.terminate(); };
+  }, [countRequest]);
+  const currentCount = combinationCount?.key === countRequest ? combinationCount : null;
+  const formatEstimate = (value) => new Intl.NumberFormat('bg-BG', { notation: 'scientific', maximumSignificantDigits: 4 }).format(value);
   async function exportWord() {
     setExporting(true);
     setExportError('');
@@ -187,6 +223,20 @@ function App() {
             {exporting ? 'Експортиране…' : 'Експорт в Word'}
           </button>
         </form>
+        <section className="combination-count" aria-label="Брой възможни раздавания" aria-live="polite" aria-busy={!currentCount}>
+          <strong>Възможни раздавания по текущите условия</strong>
+          {!currentCount ? <p>Изчисляване…</p> : currentCount.error ? <p>{currentCount.error}</p> :
+            currentCount.result.exact ? <>
+              <p className="combination-value">{BigInt(currentCount.result.value).toLocaleString('bg-BG')}</p>
+              <small>Точен брой. Редът на картите в ръката няма значение.</small>
+            </> : <>
+              <p className="combination-value">{currentCount.result.hits === 0 ? 'Недостатъчно данни за оценка' : `≈ ${formatEstimate(currentCount.result.value)}`}</p>
+              <small>{currentCount.result.hits === 0
+                ? `Няма съвпадения в ${currentCount.result.samples.toLocaleString('bg-BG')} случайни раздавания. Това не означава, че няма решение.`
+                : `Приблизителна оценка от ${currentCount.result.samples.toLocaleString('bg-BG')} случайни раздавания.`}
+                {' '}95% доверителен интервал: {currentCount.result.hits === 0 ? '0' : formatEstimate(currentCount.result.lower)} – {formatEstimate(currentCount.result.upper)}.</small>
+            </>}
+        </section>
         {generationError && <p role="alert">{generationError}</p>}
         {exportError && <p role="alert">{exportError}</p>}
       </header>

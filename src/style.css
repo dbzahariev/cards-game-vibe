@@ -170,8 +170,9 @@ h2 { margin: 0; font-size: 1.35rem; }
 .player-points { color: var(--green); font-weight: 700; font-size: .9rem; }
 .player-points span { color: var(--muted); font-weight: 400; }
 .player-suits { display: grid; gap: 10px; margin-top: 18px; }
-.player-suit { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 10px; }
-.suit-label { font-size: 1.5rem; }
+.player-suit { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 10px; }
+.suit-label { display: flex; align-items: center; gap: 5px; font-size: 1.5rem; }
+.suit-count { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 4px; border-radius: 12px; background: #edf3eb; color: var(--muted); font-size: .75rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .suit-cards { display: flex; flex-wrap: wrap; gap: 5px; min-height: 45px; align-items: center; }
 .suit-cards .card { width: 32px; min-height: 45px; font-size: .9rem; }
 .empty-suit { color: var(--muted); }

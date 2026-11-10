@@ -26,7 +26,10 @@ function PlayerHand({ player, hand, dealIndex }) {
       <div className="player-suits">
         {groups.map((suit) => (
           <div className="player-suit" key={suit.id}>
-            <span className="suit-label" aria-label={suit.name}><SuitSymbol suit={suit} /></span>
+            <span className="suit-label" aria-label={`${suit.name}: ${suit.cards.length} карти`}>
+              <SuitSymbol suit={suit} />
+              <span className="suit-count" aria-hidden="true">{suit.cards.length}</span>
+            </span>
             <div className="suit-cards">
               {suit.cards.map((card) => (
                 <span key={card.id} className={`card${suit.red ? ' red' : ''}`} aria-label={`${card.rank} · ${suit.name}`}>

@@ -149,6 +149,53 @@ function fillSuits(counts, remaining, ranges) {
   return allocation.map((row, p) => row.map((n, s) => n + cells[p][s].cap - cells[p][s].edge.cap));
 }
 
+// Sample completions of the distinct low cards, weighted by how many deals
+// each suit allocation represents. A feasible max-flow alone is not random.
+function sampleLowAllocation(counts, remaining, ranges) {
+  const factorial = [1];
+  for (let n = 1; n <= 13; n += 1) factorial[n] = factorial[n - 1] * n;
+  const slots = counts.map((row) => 13 - row.reduce((a, b) => a + b, 0));
+  const memo = new Map();
+  function choices(s, free) {
+    const result = [];
+    function visit(p, left, allocation, weight) {
+      if (p === 4) {
+        if (left === 0) result.push({ allocation, weight: factorial[remaining[s]] * weight });
+        return;
+      }
+      const min = Math.max(0, ranges[p].suits[s].min - counts[p][s]);
+      const max = Math.min(left, free[p], ranges[p].suits[s].max - counts[p][s]);
+      for (let n = min; n <= max; n += 1)
+        visit(p + 1, left - n, [...allocation, n], weight / factorial[n]);
+    }
+    visit(0, remaining[s], [], 1);
+    return result;
+  }
+  function count(s, free) {
+    if (s === 4) return free.every((n) => n === 0) ? 1 : 0;
+    const key = s + ':' + free.join(',');
+    if (!memo.has(key)) memo.set(key, choices(s, free).reduce((sum, choice) =>
+      sum + choice.weight * count(s + 1, free.map((n, p) => n - choice.allocation[p])), 0));
+    return memo.get(key);
+  }
+  const allocation = counts.map(() => []);
+  let free = slots;
+  for (let s = 0; s < 4; s += 1) {
+    let draw = Math.random() * count(s, free);
+    const options = choices(s, free).map((choice) => ({ ...choice,
+      total: choice.weight * count(s + 1, free.map((n, p) => n - choice.allocation[p])),
+    })).filter((choice) => choice.total > 0);
+    let selected = options[options.length - 1];
+    for (const choice of options) {
+      if (draw < choice.total) { selected = choice; break; }
+      draw -= choice.total;
+    }
+    selected.allocation.forEach((n, p) => allocation[p].push(n));
+    free = free.map((n, p) => n - selected.allocation[p]);
+  }
+  return allocation;
+}
+
 export function generateDealWithRanges(input, fixedHands = [[], [], [], []]) {
   const valid = (min, max, limit) => Number.isInteger(min) && Number.isInteger(max) && min >= 0 && max <= limit && min <= max;
   if (input.length !== 4) throw new Error('Необходими са условия за четири ръце.');
@@ -198,7 +245,7 @@ export function generateDealWithRanges(input, fixedHands = [[], [], [], []]) {
     if (failed.has(key)) return false;
     const allocation = fillSuits(counts, remaining, ranges);
     if (!allocation) return false;
-    if (index === honors.length) { solution = allocation; return true; }
+    if (index === honors.length) { solution = sampleLowAllocation(counts, remaining, ranges); return true; }
     const card = honors[index];
     remaining[card.suit] -= 1;
     for (const p of shuffle([0, 1, 2, 3])) {

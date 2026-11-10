@@ -1,0 +1,20 @@
+{
+  "name": "bridge-hand-builder",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/conditions.mjs && node tests/count-deals.mjs && node tests/dds.mjs && node tests/dds-export.mjs",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "docx": "^9.15.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "vite": "^8.0.0"
+  }
+}

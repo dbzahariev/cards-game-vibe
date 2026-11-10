@@ -71,3 +71,31 @@ assert.throws(() => generateDeal(unrestricted(), [['spades-A'], ['spades-A'], []
 assert.throws(() => generateDeal(unrestricted(), [['invalid'], [], [], []]), /валидни карти/);
 assert.throws(() => generateDeal(unrestricted(), [suits[0].cards.map((c) => c.id).concat('hearts-A'), [], [], []]), /до 13/);
 console.log('PASS: fixed full and partial hands, automatic completion, duplicates, and conflicting ranges');
+
+// Seeded distribution regression: a max-flow completion used to put nearly
+// nine cards in the longest suit, even with entirely unrestricted ranges.
+const originalRandom = Math.random;
+let seed = 20261110;
+Math.random = () => {
+  seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+  return seed / 4294967296;
+};
+try {
+  let longestTotal = 0;
+  let voids = 0;
+  for (let n = 0; n < 200; n++) {
+    const deal = generateDeal(unrestricted());
+    assert.equal(new Set(deal.flat()).size, 52);
+    for (const hand of deal) {
+      assert.equal(hand.length, 13);
+      const lengths = summarizeHand(hand).groups.map((group) => group.cards.length);
+      longestTotal += Math.max(...lengths);
+      if (lengths.includes(0)) voids++;
+    }
+  }
+  assert.ok(longestTotal / 800 < 6, `Longest suit average: ${longestTotal / 800}`);
+  assert.ok(voids < 160, `Hands with a void: ${voids}`);
+  console.log(`PASS: low-card distribution (longest suit ${longestTotal / 800}, voids ${voids}/800)`);
+} finally {
+  Math.random = originalRandom;
+}

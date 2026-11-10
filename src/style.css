@@ -208,3 +208,5 @@ h2 { margin: 0; font-size: 1.35rem; }
 .combination-count { margin-top: 18px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #eaf4ed; }
 .combination-count .combination-value { color: var(--green); font-size: clamp(1.1rem, 3vw, 1.6rem); font-weight: 750; overflow-wrap: anywhere; }
 .combination-count small { color: var(--muted); }
+.dds-status { font-size: .9rem; }
+.dds-status:empty { display: none; }

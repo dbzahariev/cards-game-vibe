@@ -1,8 +1,10 @@
 ﻿import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { generateDeal, summarizeHand, suits } from './bridge.js';
 import { downloadDealWord } from './export-word.js';
+import { downloadDdsWord } from './export-dds-word.js';
+import { analyzeDeals } from './dds.js';
 import './style.css';
 
 const players = [
@@ -66,6 +68,12 @@ function App() {
   const [generationError, setGenerationError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+  const [ddsExporting, setDdsExporting] = useState(false);
+  const [ddsProgress, setDdsProgress] = useState({ completed: 0, total: 0 });
+  const [ddsMessage, setDdsMessage] = useState('');
+  const ddsAbort = useRef(null);
+  const ddsCache = useRef(null);
+  useEffect(() => () => ddsAbort.current?.abort(), []);
   const countRequest = JSON.stringify({
     condition: conditionEnabled ? pointRanges.map((range) => ({
       minPoints: range.minPoints === '' ? null : Number(range.minPoints),
@@ -112,6 +120,41 @@ function App() {
       setExporting(false);
     }
   }
+  async function exportDds() {
+    if (generating || exporting || ddsExporting || deals.length === 0) return;
+    const controller = new AbortController();
+    const exportedDeals = deals;
+    ddsAbort.current = controller;
+    setDdsExporting(true);
+    setDdsProgress({ completed: 0, total: exportedDeals.length });
+    setDdsMessage('');
+    setExportError('');
+    try {
+      let analyses;
+      if (ddsCache.current?.deals === exportedDeals) {
+        analyses = ddsCache.current.analyses;
+        setDdsProgress({ completed: exportedDeals.length, total: exportedDeals.length });
+      } else {
+        analyses = await analyzeDeals(exportedDeals, {
+          signal: controller.signal,
+          onProgress: setDdsProgress,
+        });
+        ddsCache.current = { deals: exportedDeals, analyses };
+      }
+      if (controller.signal.aborted) return;
+      await downloadDdsWord(exportedDeals, analyses);
+      setDdsMessage('Word файлът с DDS анализа е готов.');
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        setDdsMessage('DDS анализът е прекратен.');
+      } else {
+        setExportError('DDS експортът не успя. Опитай отново.');
+      }
+    } finally {
+      ddsAbort.current = null;
+      setDdsExporting(false);
+    }
+  }
   return (
     <main>
       <header className="page-header">
@@ -120,9 +163,11 @@ function App() {
         <p>Четирима играчи · 13 карти на всеки.</p>
         <form className="deal-actions" onSubmit={async (event) => {
           event.preventDefault();
+          if (generating || exporting || ddsExporting) return;
           const count = Number(dealCount);
           if (Number.isInteger(count) && count >= 1 && count <= 100) {
             setGenerationError('');
+            setDdsMessage('');
             setGenerating(true);
             try {
               const condition = conditionEnabled ? pointRanges.map((range) => ({
@@ -139,6 +184,7 @@ function App() {
                 worker.postMessage({ count, condition, fixedHands: fixedEnabled ? fixedHands : undefined });
               });
               setDeals(generated);
+              ddsCache.current = null;
             } catch (error) {
               setDeals([]);
               setGenerationError(error.message);
@@ -218,11 +264,25 @@ function App() {
               <small>Границите са включени. Всички условия важат едновременно при следващо генериране. Общо в раздаването има 40 HCP.</small>
             </div>}
           </fieldset>
-          <button type="submit" className="generate" disabled={generating}>{generating ? 'Генериране…' : 'Генерирай'}</button>
-          <button type="button" className="clear" disabled={exporting || deals.length === 0} onClick={exportWord}>
+          <button type="submit" className="generate" disabled={generating || exporting || ddsExporting}>{generating ? 'Генериране…' : 'Генерирай'}</button>
+          <button type="button" className="clear" disabled={exporting || generating || ddsExporting || deals.length === 0} onClick={exportWord}>
             {exporting ? 'Експортиране…' : 'Експорт в Word'}
           </button>
+          <button type="button" className="clear" disabled={exporting || generating || ddsExporting || deals.length === 0}
+            onClick={exportDds} title="Word с DDS анализ · 6 раздавания на страница">
+            {ddsExporting ? 'DDS анализ…' : 'Експорт на DDS анализ'}
+          </button>
+          {ddsExporting && ddsProgress.completed < ddsProgress.total &&
+            <button type="button" className="clear" onClick={() => ddsAbort.current?.abort()}>Прекрати анализа</button>}
         </form>
+        <p className="dds-status" role="status" aria-live="polite">
+          {ddsExporting
+            ? ddsProgress.completed < ddsProgress.total
+              ? `DDS анализ: ${ddsProgress.completed} от ${ddsProgress.total} раздавания`
+              : 'Подготвяне на Word файла…'
+            : ddsMessage}
+        </p>
+
         <section className="combination-count" aria-label="Брой възможни раздавания" aria-live="polite" aria-busy={!currentCount}>
           <strong>Възможни раздавания по текущите условия</strong>
           {!currentCount ? <p>Изчисляване…</p> : currentCount.error ? <p>{currentCount.error}</p> :

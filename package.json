@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "test": "node tests/conditions.mjs && node tests/count-deals.mjs && node tests/dds.mjs && node tests/dds-export.mjs",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"

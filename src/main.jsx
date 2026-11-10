@@ -46,6 +46,9 @@ function App() {
   const [deals, setDeals] = useState(() => [generateDeal()]);
   const [dealCount, setDealCount] = useState('1');
   const [conditionEnabled, setConditionEnabled] = useState(false);
+  const [fixedEnabled, setFixedEnabled] = useState(false);
+  const [fixedPlayer, setFixedPlayer] = useState(3);
+  const [fixedHands, setFixedHands] = useState(() => players.map(() => []));
   const [pointRanges, setPointRanges] = useState(() => players.map(() => ({ minPoints: '0', maxPoints: '37', suits: Object.fromEntries(suits.map((s) => [s.id, { min: '0', max: '13' }])) })));
   function updateRange(index, field, value) {
     setPointRanges((ranges) => ranges.map((range, i) => i === index ? { ...range, [field]: value } : range));
@@ -94,10 +97,11 @@ function App() {
                   data.error ? reject(new Error(data.error)) : resolve(data.deals);
                 };
                 worker.onerror = () => { worker.terminate(); reject(new Error('Генерирането не успя. Опитай отново.')); };
-                worker.postMessage({ count, condition });
+                worker.postMessage({ count, condition, fixedHands: fixedEnabled ? fixedHands : undefined });
               });
               setDeals(generated);
             } catch (error) {
+              setDeals([]);
               setGenerationError(error.message);
             } finally {
               setGenerating(false);
@@ -108,6 +112,34 @@ function App() {
             <input type="number" min="1" max="100" step="1" required value={dealCount}
               onChange={(event) => setDealCount(event.target.value)} />
           </label>
+          <fieldset className="hand-condition">
+            <legend>Зададени карти</legend>
+            <label className="condition-toggle"><input type="checkbox" checked={fixedEnabled}
+              onChange={(event) => setFixedEnabled(event.target.checked)} /> Запази конкретни карти по посоки</label>
+            {fixedEnabled && <div className="fixed-cards">
+              <label>Посока <select value={fixedPlayer} onChange={(event) => setFixedPlayer(Number(event.target.value))}>
+                {players.map((player, index) => <option key={player.id} value={index}>{player.name} · {fixedHands[index].length}/13</option>)}
+              </select></label>
+              <p role="status">{players[fixedPlayer].name}: {fixedHands[fixedPlayer].length}/13 зададени карти · {summarizeHand(fixedHands[fixedPlayer]).points} HCP</p>
+              {suits.map((suit) => <div className="fixed-suit" key={suit.id}>
+                <span aria-label={suit.name}><SuitSymbol suit={suit} /></span>
+                <div className="fixed-card-buttons">{suit.cards.map((card) => {
+                  const selected = fixedHands[fixedPlayer].includes(card.id);
+                  const owner = fixedHands.findIndex((hand) => hand.includes(card.id));
+                  const unavailable = owner !== -1 && owner !== fixedPlayer;
+                  return <button type="button" key={card.id} aria-pressed={selected}
+                    aria-label={`${card.rank} · ${suit.name}${unavailable ? ' · ' + players[owner].name : ''}`}
+                    className={`fixed-card${suit.red ? ' red' : ''}${selected ? ' selected' : ''}`}
+                    disabled={generating || unavailable || (!selected && fixedHands[fixedPlayer].length >= 13)}
+                    title={unavailable ? `Зададена за ${players[owner].name}` : `${card.rank} · ${suit.name}`}
+                    onClick={() => setFixedHands((hands) => hands.map((hand, index) => index === fixedPlayer
+                      ? selected ? hand.filter((id) => id !== card.id) : [...hand, card.id] : hand))}>{card.rank}</button>;
+                })}</div>
+              </div>)}
+              <button type="button" className="clear" disabled={generating} onClick={() => setFixedHands((hands) => hands.map((hand, index) => index === fixedPlayer ? [] : hand))}>Изчисти картите за {players[fixedPlayer].name}</button>
+              <p><small>Избери до 13 карти за една или повече посоки. Останалите се допълват автоматично според включените условия. Зададените карти важат за всяко генерирано раздаване.</small></p>
+            </div>}
+          </fieldset>
           <fieldset className="hand-condition">
             <legend>Условия за всички ръце</legend>
             <label className="condition-toggle"><input type="checkbox" checked={conditionEnabled}
@@ -148,7 +180,7 @@ function App() {
             </div>}
           </fieldset>
           <button type="submit" className="generate" disabled={generating}>{generating ? 'Генериране…' : 'Генерирай'}</button>
-          <button type="button" className="clear" disabled={exporting} onClick={exportWord}>
+          <button type="button" className="clear" disabled={exporting || deals.length === 0} onClick={exportWord}>
             {exporting ? 'Експортиране…' : 'Експорт в Word'}
           </button>
         </form>

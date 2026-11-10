@@ -1,11 +1,12 @@
 ﻿import assert from 'node:assert/strict';
 import { generateDeal, summarizeHand, suits } from '../src/bridge.js';
 const unrestricted = () => Array.from({ length: 4 }, () => ({ minPoints: 0, maxPoints: 37, suits: Object.fromEntries(suits.map(s => [s.id, { min: 0, max: 13 }])) }));
-function check(ranges) {
-  const deal = generateDeal(ranges);
+function check(ranges, fixedHands = [[], [], [], []]) {
+  const deal = generateDeal(ranges, fixedHands);
   assert.equal(new Set(deal.flat()).size, 52);
   deal.forEach((hand, p) => {
     assert.equal(hand.length, 13);
+    fixedHands[p].forEach((id) => assert.ok(hand.includes(id)));
     const summary = summarizeHand(hand);
     assert.ok(summary.points >= ranges[p].minPoints && summary.points <= ranges[p].maxPoints);
     summary.groups.forEach((s) => {
@@ -45,3 +46,28 @@ assert.throws(() => generateDeal(conflict));
 const invalid = unrestricted(); invalid[0].suits.clubs = { min: 5, max: 4 };
 assert.throws(() => generateDeal(invalid));
 console.log('PASS: mixed ranges, 100 exact deals, extreme shapes, and impossible conditions');
+
+// Full and partial fixed hands must survive the solver, including low cards.
+for (let n = 0; n < 50; n++) {
+  const original = generateDeal();
+  const ranges = original.map((hand) => {
+    const { points, groups } = summarizeHand(hand);
+    return { minPoints: points, maxPoints: points, suits: Object.fromEntries(groups.map((s) => [s.id, { min: s.cards.length, max: s.cards.length }])) };
+  });
+  check(ranges, original.map((hand, p) => hand.slice(0, [13, 7, 3, 0][p])));
+  check(ranges, original);
+}
+const fixed = [['spades-A', 'hearts-2'], [], [], []];
+const freeDeal = generateDeal(null, fixed);
+fixed[0].forEach((id) => assert.ok(freeDeal[0].includes(id)));
+assert.equal(new Set(freeDeal.flat()).size, 52);
+const fixedConflict = unrestricted();
+fixedConflict[0].maxPoints = 3;
+assert.throws(() => generateDeal(fixedConflict, fixed), /Няма раздаване/);
+fixedConflict[0].maxPoints = 37;
+fixedConflict[0].suits.hearts.max = 0;
+assert.throws(() => generateDeal(fixedConflict, fixed), /Няма раздаване/);
+assert.throws(() => generateDeal(unrestricted(), [['spades-A'], ['spades-A'], [], []]), /повече от веднъж/);
+assert.throws(() => generateDeal(unrestricted(), [['invalid'], [], [], []]), /валидни карти/);
+assert.throws(() => generateDeal(unrestricted(), [suits[0].cards.map((c) => c.id).concat('hearts-A'), [], [], []]), /до 13/);
+console.log('PASS: fixed full and partial hands, automatic completion, duplicates, and conflicting ranges');

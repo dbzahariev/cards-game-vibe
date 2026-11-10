@@ -24,8 +24,13 @@ export function generateHand() {
   return generateDeal()[0];
 }
 
-export function generateDeal(condition = null) {
-  if (Array.isArray(condition)) return generateDealWithRanges(condition);
+export function generateDeal(condition = null, fixedHands = [[], [], [], []]) {
+  if (Array.isArray(condition)) return generateDealWithRanges(condition, fixedHands);
+  if (fixedHands.some((hand) => hand.length)) {
+    const ranges = Array.from({ length: 4 }, () => ({ minPoints: 0, maxPoints: 37 }));
+    if (condition) Object.assign(ranges[condition.playerIndex], condition);
+    return generateDealWithRanges(ranges, fixedHands);
+  }
   if (condition) return generateConstrainedDeal(condition);
   const deck = suits.flatMap((suit) => suit.cards.map((card) => card.id));
   for (let i = deck.length - 1; i > 0; i -= 1) {
@@ -144,7 +149,7 @@ function fillSuits(counts, remaining, ranges) {
   return allocation.map((row, p) => row.map((n, s) => n + cells[p][s].cap - cells[p][s].edge.cap));
 }
 
-export function generateDealWithRanges(input) {
+export function generateDealWithRanges(input, fixedHands = [[], [], [], []]) {
   const valid = (min, max, limit) => Number.isInteger(min) && Number.isInteger(max) && min >= 0 && max <= limit && min <= max;
   if (input.length !== 4) throw new Error('Необходими са условия за четири ръце.');
   const ranges = input.map((range) => ({
@@ -154,6 +159,13 @@ export function generateDealWithRanges(input) {
   if (ranges.some((r) => !valid(r.minPoints, r.maxPoints, 37) || r.suits.some((r) => !valid(r.min, r.max, 13))))
     throw new Error('Провери диапазоните: цели точки от 0 до 37 и брой карти от 0 до 13; минимумът трябва да е до максимума.');
   const impossible = () => new Error('Няма раздаване с тези условия. Общо има 40 HCP, по 13 карти на ръка и по 13 от всяка боя.');
+  const deck = new Set(suits.flatMap((suit) => suit.cards.map((card) => card.id)));
+  if (!Array.isArray(fixedHands) || fixedHands.length !== 4 || fixedHands.some((hand) =>
+    !Array.isArray(hand) || hand.length > 13 || hand.some((id) => !deck.has(id)))) {
+    throw new Error('Задай до 13 валидни карти за всяка посока.');
+  }
+  const fixed = new Set(fixedHands.flat());
+  if (fixed.size !== fixedHands.flat().length) throw new Error('Една карта не може да бъде зададена повече от веднъж.');
   if (ranges.reduce((sum, r) => sum + r.minPoints, 0) > 40 ||
       ranges.reduce((sum, r) => sum + r.maxPoints, 0) < 40) throw impossible();
   function shuffle(items) {
@@ -165,12 +177,12 @@ export function generateDealWithRanges(input) {
   }
   const honors = shuffle(suits.flatMap((suit, s) => suit.cards.slice(0, 4).map((card) => ({
     id: card.id, suit: s, points: pointsByRank[card.rank],
-  })))).sort((a, b) => b.points - a.points);
-  const counts = Array.from({ length: 4 }, () => [0, 0, 0, 0]);
-  if (!fillSuits(counts, [13, 13, 13, 13], ranges)) throw impossible();
-  const hands = Array.from({ length: 4 }, () => []);
-  const scores = [0, 0, 0, 0];
-  const remaining = [13, 13, 13, 13];
+  })))).filter((card) => !fixed.has(card.id)).sort((a, b) => b.points - a.points);
+  const hands = fixedHands.map((hand) => [...hand]);
+  const counts = hands.map((hand) => suits.map((suit) => hand.filter((id) => id.startsWith(suit.id + '-')).length));
+  const scores = hands.map((hand) => summarizeHand(hand).points);
+  const remaining = suits.map((_, s) => 13 - counts.reduce((sum, row) => sum + row[s], 0));
+  if (!fillSuits(counts, remaining, ranges)) throw impossible();
   const failed = new Set();
   let solution;
   let nodes = 0;
@@ -206,7 +218,7 @@ export function generateDealWithRanges(input) {
   }
   if (!assign(0)) throw impossible();
   suits.forEach((suit, s) => {
-    const low = shuffle(suit.cards.slice(4).map((c) => c.id));
+    const low = shuffle(suit.cards.slice(4).map((c) => c.id).filter((id) => !fixed.has(id)));
     hands.forEach((hand, p) => {
       for (let i = 0; i < solution[p][s]; i += 1) hand.push(low.pop());
     });
